@@ -14,8 +14,15 @@ if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Darwin")
 	execute_process(COMMAND xcrun --find ar WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE AR OUTPUT_STRIP_TRAILING_WHITESPACE)
 	execute_process(COMMAND xcrun --find ld WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE LD OUTPUT_STRIP_TRAILING_WHITESPACE)
 	execute_process(COMMAND xcrun --show-sdk-path WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE SYSROOT OUTPUT_STRIP_TRAILING_WHITESPACE)
-	set(CMAKE_C_COMPILER "${CC}")
-	set(CMAKE_CXX_COMPILER "${CXX}")
+set(CMAKE_SYSTEM_NAME Windows)
+set(TOOLCHAIN_PREFIX x86_64-w64-mingw32)
+
+# The following line links the shared library libdokanfuse1.dll statically, so it won't depend on any additional dlls.
+set(CMAKE_SHARED_LINKER_FLAGS "-static -static-libgcc -static-libstdc++" CACHE STRING "" FORCE)
+
+set(CMAKE_C_COMPILER ${TOOLCHAIN_PREFIX}-gcc)
+set(CMAKE_CXX_COMPILER ${TOOLCHAIN_PREFIX}-g++)
+set(CMAKE_RC_COMPILER ${TOOLCHAIN_PREFIX}-windres)
 	endif()
 	if(NOT DEFINED ARCH)
 	set(ARCH "$ENV{ARCH}")
@@ -34,9 +41,22 @@ if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Darwin")
 	endif()
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -arch ${ARCH} -isysroot ${SYSROOT} ${MINVER} -fembed-bitcode=off -flto=thin -pthread -mrelax-all -std=gnu++20")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -arch ${ARCH} -isysroot ${SYSROOT} ${MINVER} -fembed-bitcode=off -flto=thin -pthread -mrelax-all -std=gnu17")
-elseif("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Linux")
+endif()
+if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Linux")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--allow-multiple-definition -pthread")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--allow-multiple-definition -pthread")
+elseif("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Windows")
+    if(MSYS)
+        # Common MSYS2 flags
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--allow-multiple-definition -pthread")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--allow-multiple-definition -pthread")
+        
+        # Specific flags for msys2-ucrt64
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+            # Add any UCRT-specific flags or definitions here
+           set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_UCRT")
+        endif()
+    endif()
 endif()
 add_executable(iBoot64Patcher
 		src/main.cpp)
@@ -53,17 +73,21 @@ if(NOT DEFINED NO_PKGCFG AND NOT "$ENV{NO_PKGCFG}" MATCHES "1")
 			liboffsetfinder64)
     target_include_directories(iBoot64Patcher PRIVATE "${DEPS_INCLUDE_DIRS}")
 	target_link_directories(iBoot64Patcher PRIVATE "${DEPS_LIBRARY_DIRS}")
-	target_link_libraries(futurerestore PRIVATE "${DEPS_LIBRARIES}"
+	target_link_libraries(iBoot64Patcher PRIVATE "${DEPS_LIBRARIES}"
 			"-lgeneral"
-			insn
-			offsetfinder64)
+			"-linsn"
+			"-loffsetfinder64"
+			"-lgcc"
+			"-lstdc++")
 else()
 	target_include_directories(iBoot64Patcher PRIVATE "${CMAKE_SOURCE_DIR}/dep_root/include")
 	target_link_directories(iBoot64Patcher PRIVATE "${CMAKE_SOURCE_DIR}/dep_root/lib")
 	target_link_libraries(iBoot64Patcher PRIVATE
 			"-lgeneral"
-			insn
-			offsetfinder64)
+			"-linsn"
+			"-loffsetfinder64"
+			"-lgcc"
+			"-lstdc++")
 endif()
 
 execute_process(COMMAND git rev-list --count HEAD WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE VERSION_COMMIT_COUNT ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
